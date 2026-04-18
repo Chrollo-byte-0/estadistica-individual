@@ -115,7 +115,7 @@ else:
         "correspondiente para comenzar."
     )
 
-    
+
 # ── FASE 2: Análisis Exploratorio ────────────────────────────────────────────
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -393,4 +393,266 @@ if "data" in st.session_state:
         "sesgo_label": sesgo_label,
         "out_label": out_label,
         "norm_label": norm_label,
+    }
+
+
+# ── FASE 3: Prueba de Hipótesis · Prueba Z ───────────────────────────────────
+if "data" in st.session_state:
+    data    = st.session_state["data"]
+    valores = data["valor"].values
+    sigma   = st.session_state["sigma_pob"]
+    n       = len(valores)
+    x_bar   = np.mean(valores)
+
+    st.markdown("---")
+    st.header("🔬 Fase 3 · Prueba de Hipótesis — Prueba Z")
+
+    # ── Supuesto recordatorio ────────────────────────────────────────────────
+    with st.expander("📌 Supuestos de la Prueba Z", expanded=False):
+        col_s1, col_s2, col_s3 = st.columns(3)
+        col_s1.info(f"**σ poblacional conocida**\nσ = {sigma:.4f}")
+        col_s2.info(f"**Tamaño de muestra**\nn = {n} {'✅ ≥ 30' if n >= 30 else '⚠️ < 30'}")
+        col_s3.info("**TCL aplicable**\nDistribución de x̄ ~ Normal")
+
+    st.markdown("---")
+
+    # ── Configuración de hipótesis ───────────────────────────────────────────
+    st.subheader("⚙️ Configuración de hipótesis")
+
+    col_h1, col_h2, col_h3 = st.columns([1.2, 1.2, 1])
+
+    with col_h1:
+        mu_0 = st.number_input(
+            "Valor hipotético de la media (μ₀)",
+            value=round(float(x_bar), 2),
+            step=0.1,
+            help="Media poblacional bajo H₀.",
+        )
+
+    with col_h2:
+        tipo_prueba = st.selectbox(
+            "Tipo de prueba (H₁)",
+            [
+                "Bilateral (μ ≠ μ₀)",
+                "Cola izquierda (μ < μ₀)",
+                "Cola derecha (μ > μ₀)",
+            ],
+        )
+
+    with col_h3:
+        alpha = st.select_slider(
+            "Nivel de significancia (α)",
+            options=[0.01, 0.05, 0.10],
+            value=0.05,
+        )
+
+    # ── Mostrar hipótesis en LaTeX ───────────────────────────────────────────
+    tipo_map = {
+        "Bilateral (μ ≠ μ₀)":       ("μ = μ₀", "μ ≠ μ₀", "bilateral"),
+        "Cola izquierda (μ < μ₀)":  ("μ ≥ μ₀", "μ < μ₀", "left"),
+        "Cola derecha (μ > μ₀)":    ("μ ≤ μ₀", "μ > μ₀", "right"),
+    }
+    h0_tex, h1_tex, cola = tipo_map[tipo_prueba]
+
+    col_latex1, col_latex2 = st.columns(2)
+    col_latex1.latex(rf"H_0: \quad {h0_tex.replace('μ', r'\mu').replace('μ₀', r'\mu_0')}")
+    col_latex2.latex(rf"H_1: \quad {h1_tex.replace('μ', r'\mu').replace('μ₀', r'\mu_0')}")
+
+    st.markdown("---")
+
+    # ── Cálculo del estadístico Z ────────────────────────────────────────────
+    error_est = sigma / np.sqrt(n)
+    z_stat    = (x_bar - mu_0) / error_est
+
+    if cola == "bilateral":
+        p_value   = 2 * (1 - stats.norm.cdf(abs(z_stat)))
+        z_critico = stats.norm.ppf(1 - alpha / 2)
+        rechaza   = abs(z_stat) > z_critico
+    elif cola == "left":
+        p_value   = stats.norm.cdf(z_stat)
+        z_critico = stats.norm.ppf(alpha)
+        rechaza   = z_stat < z_critico
+    else:  # right
+        p_value   = 1 - stats.norm.cdf(z_stat)
+        z_critico = stats.norm.ppf(1 - alpha)
+        rechaza   = z_stat > z_critico
+
+    # ── Métricas principales ─────────────────────────────────────────────────
+    st.subheader("📊 Resultados del contraste")
+
+    col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
+    col_m1.metric("Media muestral (x̄)",    f"{x_bar:.4f}")
+    col_m2.metric("Error estándar (σ/√n)", f"{error_est:.4f}")
+    col_m3.metric("Estadístico Z",          f"{z_stat:.4f}")
+    col_m4.metric("p-value",                f"{p_value:.4f}")
+    col_m5.metric("Z crítico",
+                  f"±{z_critico:.4f}" if cola == "bilateral" else f"{z_critico:.4f}")
+
+    # Veredicto
+    if rechaza:
+        st.error(
+            f"### 🔴 Se RECHAZA H₀  (α = {alpha})\n"
+            f"p-value = {p_value:.4f} < α = {alpha}  |  "
+            f"Z = {z_stat:.4f} cae en la zona de rechazo."
+        )
+    else:
+        st.success(
+            f"### ✅ No se rechaza H₀  (α = {alpha})\n"
+            f"p-value = {p_value:.4f} ≥ α = {alpha}  |  "
+            f"Z = {z_stat:.4f} cae en la zona de no rechazo."
+        )
+
+    # ── Fórmula con valores sustituidos ─────────────────────────────────────
+    with st.expander("🧮 Desarrollo del cálculo", expanded=False):
+        st.latex(
+            rf"Z = \frac{{\bar{{x}} - \mu_0}}{{\sigma / \sqrt{{n}}}} "
+            rf"= \frac{{{x_bar:.4f} - {mu_0:.4f}}}{{{sigma:.4f} / \sqrt{{{n}}}}} "
+            rf"= \frac{{{x_bar - mu_0:.4f}}}{{{error_est:.4f}}} "
+            rf"= {z_stat:.4f}"
+        )
+        st.latex(
+            rf"\text{{p-value}} = {p_value:.6f} \quad "
+            rf"\alpha = {alpha} \quad "
+            rf"\Rightarrow \quad "
+            rf"{'\\text{{Rechazar}} H_0' if rechaza else '\\text{{No rechazar}} H_0'}"
+        )
+
+    # ── Gráfico: curva normal con zonas de rechazo ───────────────────────────
+    st.subheader("📉 Curva normal estándar · Zonas de rechazo")
+
+    x_plot = np.linspace(-4.2, 4.2, 800)
+    y_plot = stats.norm.pdf(x_plot)
+
+    ROJO   = "rgba(220, 53, 69, 0.55)"
+    VERDE  = "rgba(40, 167, 69, 0.30)"
+    BORDE  = "#DC3545"
+
+    fig_z = go.Figure()
+
+    # ── Zona(s) de NO rechazo (verde) ────────────────────────────────────────
+    if cola == "bilateral":
+        mask_nr = (x_plot >= -z_critico) & (x_plot <= z_critico)
+    elif cola == "left":
+        mask_nr = x_plot >= z_critico
+    else:
+        mask_nr = x_plot <= z_critico
+
+    fig_z.add_trace(go.Scatter(
+        x=np.concatenate([[x_plot[mask_nr][0]], x_plot[mask_nr], [x_plot[mask_nr][-1]]]),
+        y=np.concatenate([[0], y_plot[mask_nr], [0]]),
+        fill="toself", fillcolor=VERDE,
+        line=dict(width=0), name="No rechazo H₀",
+        hoverinfo="skip",
+    ))
+
+    # ── Zona(s) de rechazo (rojo) ────────────────────────────────────────────
+    def add_rejection_area(fig, x_arr, y_arr, mask, name, showlegend=True):
+        xs = x_arr[mask]
+        ys = y_arr[mask]
+        if len(xs) == 0:
+            return
+        fig.add_trace(go.Scatter(
+            x=np.concatenate([[xs[0]], xs, [xs[-1]]]),
+            y=np.concatenate([[0], ys, [0]]),
+            fill="toself", fillcolor=ROJO,
+            line=dict(color=BORDE, width=1.2),
+            name=name, showlegend=showlegend,
+            hoverinfo="skip",
+        ))
+
+    if cola == "bilateral":
+        add_rejection_area(fig_z, x_plot, y_plot, x_plot <= -z_critico, "Rechazo H₀")
+        add_rejection_area(fig_z, x_plot, y_plot, x_plot >=  z_critico, "Rechazo H₀", showlegend=False)
+    elif cola == "left":
+        add_rejection_area(fig_z, x_plot, y_plot, x_plot <= z_critico, "Rechazo H₀")
+    else:
+        add_rejection_area(fig_z, x_plot, y_plot, x_plot >= z_critico, "Rechazo H₀")
+
+    # ── Curva normal completa ─────────────────────────────────────────────────
+    fig_z.add_trace(go.Scatter(
+        x=x_plot, y=y_plot,
+        mode="lines", name="N(0,1)",
+        line=dict(color="#4F8EF7", width=2.5),
+    ))
+
+    # ── Línea del estadístico Z observado ────────────────────────────────────
+    z_plot_val = max(min(z_stat, 4.1), -4.1)   # clamp para visibilidad
+    fig_z.add_vline(
+        x=z_plot_val,
+        line=dict(
+            color="#FFD700", width=2.5, dash="dash",
+        ),
+        annotation_text=f"Z = {z_stat:.3f}",
+        annotation_position="top" if z_stat >= 0 else "top left",
+        annotation_font=dict(color="#FFD700", size=13),
+    )
+
+    # ── Línea(s) crítica(s) ───────────────────────────────────────────────────
+    criticos = ([-z_critico, z_critico] if cola == "bilateral"
+                else [z_critico])
+    for zc in criticos:
+        zc_clamp = max(min(zc, 4.1), -4.1)
+        fig_z.add_vline(
+            x=zc_clamp,
+            line=dict(color=BORDE, width=1.8, dash="dot"),
+            annotation_text=f"Zc = {zc:.3f}",
+            annotation_position="top right" if zc > 0 else "top left",
+            annotation_font=dict(color=BORDE, size=11),
+        )
+
+    fig_z.update_layout(
+        height=430,
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis=dict(title="Z", range=[-4.3, 4.3], zeroline=True,
+                   zerolinecolor="rgba(255,255,255,0.2)"),
+        yaxis=dict(title="f(Z)", showgrid=False),
+        legend=dict(orientation="h", y=-0.18),
+        margin=dict(t=30, b=60, l=40, r=20),
+    )
+
+    st.plotly_chart(fig_z, use_container_width=True)
+
+    # ── Interpretación textual ────────────────────────────────────────────────
+    st.subheader("📝 Interpretación estadística")
+
+    signo_map = {"bilateral": "≠", "left": "<", "right": ">"}
+    cola_txt  = {
+        "bilateral": "bilateral",
+        "left":      "de cola izquierda",
+        "right":     "de cola derecha",
+    }
+
+    interpretacion = f"""
+**Contraste {cola_txt[cola]} con α = {alpha}**
+
+Se realizó una Prueba Z {cola_txt[cola]} para evaluar si la media poblacional
+difiere de **μ₀ = {mu_0:.4f}**, asumiendo una desviación estándar poblacional
+conocida de **σ = {sigma:.4f}** y una muestra de **n = {n}** observaciones.
+
+- La media muestral observada fue **x̄ = {x_bar:.4f}**.
+- El estadístico de prueba resultó **Z = {z_stat:.4f}**.
+- El valor crítico para α = {alpha} es **Zc = {'±' if cola == 'bilateral' else ''}{abs(z_critico):.4f}**.
+- El p-value obtenido es **{p_value:.4f}**.
+
+{'🔴 **Conclusión:** Con un nivel de significancia del ' + str(int(alpha*100)) + '%, existe evidencia estadística suficiente para **rechazar H₀**. Los datos sugieren que la media poblacional ' + signo_map[cola] + ' ' + str(mu_0) + '.' if rechaza else '✅ **Conclusión:** Con un nivel de significancia del ' + str(int(alpha*100)) + '%, **no existe evidencia suficiente para rechazar H₀**. Los datos son consistentes con una media poblacional de ' + str(mu_0) + '.'}
+"""
+    st.markdown(interpretacion)
+
+    # ── Guardar en session_state para Fase 4 ────────────────────────────────
+    st.session_state["prueba_z"] = {
+        "mu_0":       mu_0,
+        "alpha":      alpha,
+        "cola":       cola,
+        "x_bar":      x_bar,
+        "sigma":      sigma,
+        "n":          n,
+        "error_est":  error_est,
+        "z_stat":     z_stat,
+        "z_critico":  z_critico,
+        "p_value":    p_value,
+        "rechaza":    rechaza,
+        "h0_tex":     h0_tex,
+        "h1_tex":     h1_tex,
     }
