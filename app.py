@@ -1,9 +1,17 @@
-# app.py
+# ============================================================
+#  app.py  —  Análisis Estadístico · Prueba Z  (4 Fases)
+# ============================================================
+
 import streamlit as st
 import numpy as np
 import pandas as pd
+from scipy import stats
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from google import genai
+from google.genai import types
 
-# ── Configuración de la página ──────────────────────────────────────────────
+# ── Configuración de la página ───────────────────────────────────────────────
 st.set_page_config(
     page_title="Análisis Estadístico - Prueba Z",
     page_icon="📊",
@@ -13,7 +21,10 @@ st.set_page_config(
 st.title("📊 Análisis Estadístico · Prueba Z")
 st.markdown("Proyecto de estadística inferencial con visualización e IA interpretativa.")
 
-# ── Sidebar: fuente de datos ─────────────────────────────────────────────────
+# ════════════════════════════════════════════════════════════
+#  FASE 1 — Configuración inicial y carga de datos
+# ════════════════════════════════════════════════════════════
+
 st.sidebar.header("⚙️ Configuración de datos")
 
 fuente = st.sidebar.radio(
@@ -21,7 +32,7 @@ fuente = st.sidebar.radio(
     ["Generar datos sintéticos", "Cargar CSV"],
 )
 
-data = None  # se llenará en cada rama
+data = None
 
 # ── Rama A: datos sintéticos ─────────────────────────────────────────────────
 if fuente == "Generar datos sintéticos":
@@ -50,7 +61,7 @@ if fuente == "Generar datos sintéticos":
         muestra = rng.normal(loc=mu, scale=sigma, size=n)
         data = pd.DataFrame({"valor": muestra})
         st.session_state["data"] = data
-        st.session_state["sigma_pob"] = sigma   # varianza poblacional conocida
+        st.session_state["sigma_pob"] = sigma
         st.sidebar.success(f"✅ {n} observaciones generadas.")
 
 # ── Rama B: carga de CSV ─────────────────────────────────────────────────────
@@ -115,14 +126,12 @@ else:
         "correspondiente para comenzar."
     )
 
-
-# ── FASE 2: Análisis Exploratorio ────────────────────────────────────────────
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from scipy import stats
+# ════════════════════════════════════════════════════════════
+#  FASE 2 — Análisis Exploratorio y Diagnóstico
+# ════════════════════════════════════════════════════════════
 
 if "data" in st.session_state:
-    data = st.session_state["data"]
+    data    = st.session_state["data"]
     valores = data["valor"].values
 
     st.markdown("---")
@@ -131,9 +140,9 @@ if "data" in st.session_state:
     # ── Controles de visualización ───────────────────────────────────────────
     with st.expander("🎨 Opciones de visualización", expanded=False):
         col_v1, col_v2, col_v3 = st.columns(3)
-        n_bins = col_v1.slider("Número de bins (histograma)", 10, 100, 30, 5)
-        color_hist = col_v2.color_picker("Color histograma", "#4F8EF7")
-        color_box  = col_v3.color_picker("Color boxplot",    "#F7824F")
+        n_bins      = col_v1.slider("Número de bins (histograma)", 10, 100, 30, 5)
+        color_hist  = col_v2.color_picker("Color histograma", "#4F8EF7")
+        color_box   = col_v3.color_picker("Color boxplot",    "#F7824F")
 
     # ── Estadísticos auxiliares ──────────────────────────────────────────────
     n        = len(valores)
@@ -141,29 +150,26 @@ if "data" in st.session_state:
     mediana  = np.median(valores)
     s        = np.std(valores, ddof=1)
     skewness = stats.skew(valores)
-    kurtosis = stats.kurtosis(valores)          # exceso de curtosis (Fisher)
+    kurtosis = stats.kurtosis(valores)
     q1, q3   = np.percentile(valores, [25, 75])
     iqr      = q3 - q1
     lim_inf  = q1 - 1.5 * iqr
     lim_sup  = q3 + 1.5 * iqr
     outliers = valores[(valores < lim_inf) | (valores > lim_sup)]
 
-    # ── Test de normalidad (Shapiro-Wilk o KS) ───────────────────────────────
+    # ── Test de normalidad ───────────────────────────────────────────────────
     if n <= 5000:
         stat_norm, p_norm = stats.shapiro(valores)
         test_nombre = "Shapiro-Wilk"
     else:
-        stat_norm, p_norm = stats.kstest(
-            (valores - media) / s, "norm"
-        )
+        stat_norm, p_norm = stats.kstest((valores - media) / s, "norm")
         test_nombre = "Kolmogorov-Smirnov"
 
-    # ── Figura principal: Histograma + KDE ───────────────────────────────────
-    kde        = stats.gaussian_kde(valores)
-    x_kde      = np.linspace(valores.min() - s, valores.max() + s, 400)
-    y_kde      = kde(x_kde)
+    # ── Histograma + KDE ─────────────────────────────────────────────────────
+    kde       = stats.gaussian_kde(valores)
+    x_kde     = np.linspace(valores.min() - s, valores.max() + s, 400)
+    y_kde     = kde(x_kde)
 
-    # Escalar KDE al eje de frecuencia del histograma
     counts, bin_edges = np.histogram(valores, bins=n_bins)
     bin_width  = bin_edges[1] - bin_edges[0]
     y_kde_freq = y_kde * n * bin_width
@@ -175,7 +181,6 @@ if "data" in st.session_state:
         horizontal_spacing=0.08,
     )
 
-    # Histograma
     fig.add_trace(
         go.Histogram(
             x=valores, nbinsx=n_bins,
@@ -187,7 +192,6 @@ if "data" in st.session_state:
         row=1, col=1,
     )
 
-    # KDE superpuesta (en escala de frecuencia)
     fig.add_trace(
         go.Scatter(
             x=x_kde, y=y_kde_freq,
@@ -197,7 +201,6 @@ if "data" in st.session_state:
         row=1, col=1,
     )
 
-    # Líneas verticales: media y mediana
     for val, label, color_line in [
         (media,   "Media",   "#2EC4B6"),
         (mediana, "Mediana", "#FF9F1C"),
@@ -210,7 +213,6 @@ if "data" in st.session_state:
             annotation_font_size=11,
         )
 
-    # Boxplot
     fig.add_trace(
         go.Box(
             y=valores, name="Distribución",
@@ -232,7 +234,6 @@ if "data" in st.session_state:
         plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(orientation="h", y=-0.15),
         margin=dict(t=50, b=60, l=40, r=20),
-        title_text="",
     )
     fig.update_xaxes(title_text="Valor", row=1, col=1)
     fig.update_yaxes(title_text="Frecuencia", row=1, col=1)
@@ -243,7 +244,6 @@ if "data" in st.session_state:
     # ── Q-Q Plot ─────────────────────────────────────────────────────────────
     with st.expander("📐 Q-Q Plot (verificación visual de normalidad)", expanded=False):
         qq = stats.probplot(valores, dist="norm")
-        qq_x = np.array([pt[0] for pt in zip(qq[0][0], qq[0][0])])
         qq_theoretical = qq[0][0]
         qq_sample      = qq[0][1]
         slope, intercept = qq[1][0], qq[1][1]
@@ -276,75 +276,65 @@ if "data" in st.session_state:
     st.markdown("---")
     st.subheader("🩺 Panel de Diagnóstico Automático")
 
-    # ── Diagnóstico 1: Sesgo ─────────────────────────────────────────────────
+    # Sesgo
     if abs(skewness) < 0.5:
         sesgo_label, sesgo_color, sesgo_txt = (
-            "✅ Aproximadamente simétrica",
-            "normal",
+            "✅ Aproximadamente simétrica", "normal",
             f"El coeficiente de asimetría es **{skewness:.4f}** (|skew| < 0.5), "
             "indicando una distribución prácticamente simétrica.",
         )
     elif skewness >= 0.5:
         sesgo_label, sesgo_color, sesgo_txt = (
-            "⚠️ Sesgo positivo (cola derecha)",
-            "warning",
+            "⚠️ Sesgo positivo (cola derecha)", "warning",
             f"El coeficiente de asimetría es **{skewness:.4f}** (skew ≥ 0.5). "
             "La cola derecha es más larga; la media supera a la mediana.",
         )
     else:
         sesgo_label, sesgo_color, sesgo_txt = (
-            "⚠️ Sesgo negativo (cola izquierda)",
-            "warning",
+            "⚠️ Sesgo negativo (cola izquierda)", "warning",
             f"El coeficiente de asimetría es **{skewness:.4f}** (skew ≤ −0.5). "
             "La cola izquierda es más larga; la mediana supera a la media.",
         )
 
-    # ── Diagnóstico 2: Outliers ──────────────────────────────────────────────
+    # Outliers
     pct_out = len(outliers) / n * 100
     if len(outliers) == 0:
         out_label, out_color, out_txt = (
-            "✅ Sin outliers detectados",
-            "normal",
+            "✅ Sin outliers detectados", "normal",
             "No se encontraron valores fuera del rango IQR × 1.5.",
         )
     elif pct_out <= 5:
         out_label, out_color, out_txt = (
-            f"⚠️ {len(outliers)} outlier(s) moderados ({pct_out:.1f}%)",
-            "warning",
+            f"⚠️ {len(outliers)} outlier(s) moderados ({pct_out:.1f}%)", "warning",
             f"Se detectaron **{len(outliers)}** valor(es) atípico(s) "
             f"({pct_out:.1f}% de la muestra) usando el criterio IQR × 1.5.",
         )
     else:
         out_label, out_color, out_txt = (
-            f"🔴 {len(outliers)} outliers severos ({pct_out:.1f}%)",
-            "error",
+            f"🔴 {len(outliers)} outliers severos ({pct_out:.1f}%)", "error",
             f"El **{pct_out:.1f}%** de los datos son atípicos. "
             "Revisar la calidad de los datos antes de proceder.",
         )
 
-    # ── Diagnóstico 3: Normalidad ────────────────────────────────────────────
+    # Normalidad
     alpha_norm = 0.05
     if p_norm > alpha_norm:
         norm_label, norm_color, norm_txt = (
-            "✅ Distribución compatible con la Normal",
-            "normal",
+            "✅ Distribución compatible con la Normal", "normal",
             f"**{test_nombre}**: estadístico = {stat_norm:.4f}, "
             f"p-value = {p_norm:.4f} > {alpha_norm}. "
             "No hay evidencia suficiente para rechazar la normalidad.",
         )
     else:
         norm_label, norm_color, norm_txt = (
-            "⚠️ Posible desviación de la Normal",
-            "warning",
+            "⚠️ Posible desviación de la Normal", "warning",
             f"**{test_nombre}**: estadístico = {stat_norm:.4f}, "
             f"p-value = {p_norm:.4f} ≤ {alpha_norm}. "
             "Se rechaza la normalidad estricta; sin embargo, con n ≥ 30 "
             "el TCL respalda el uso de la Prueba Z.",
         )
 
-    # Renderizar tarjetas de diagnóstico
     col_d1, col_d2, col_d3 = st.columns(3)
-
     for col, label, color, txt in [
         (col_d1, sesgo_label, sesgo_color, sesgo_txt),
         (col_d2, out_label,   out_color,   out_txt),
@@ -358,7 +348,7 @@ if "data" in st.session_state:
             else:
                 st.error(f"**{label}**\n\n{txt}")
 
-    # ── Tabla de estadísticos descriptivos ───────────────────────────────────
+    # ── Tabla de estadísticos ────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("📋 Estadísticos descriptivos")
 
@@ -383,7 +373,7 @@ if "data" in st.session_state:
     })
     st.dataframe(tabla, use_container_width=True, hide_index=True)
 
-    # Guardar diagnóstico en session_state para la fase de IA
+    # Guardar diagnóstico para Fase 4
     st.session_state["diagnostico"] = {
         "n": n, "media": media, "mediana": mediana, "s": s,
         "skewness": skewness, "kurtosis": kurtosis,
@@ -395,8 +385,10 @@ if "data" in st.session_state:
         "norm_label": norm_label,
     }
 
+# ════════════════════════════════════════════════════════════
+#  FASE 3 — Prueba de Hipótesis · Prueba Z
+# ════════════════════════════════════════════════════════════
 
-# ── FASE 3: Prueba de Hipótesis · Prueba Z ───────────────────────────────────
 if "data" in st.session_state:
     data    = st.session_state["data"]
     valores = data["valor"].values
@@ -407,7 +399,6 @@ if "data" in st.session_state:
     st.markdown("---")
     st.header("🔬 Fase 3 · Prueba de Hipótesis — Prueba Z")
 
-    # ── Supuesto recordatorio ────────────────────────────────────────────────
     with st.expander("📌 Supuestos de la Prueba Z", expanded=False):
         col_s1, col_s2, col_s3 = st.columns(3)
         col_s1.info(f"**σ poblacional conocida**\nσ = {sigma:.4f}")
@@ -415,8 +406,6 @@ if "data" in st.session_state:
         col_s3.info("**TCL aplicable**\nDistribución de x̄ ~ Normal")
 
     st.markdown("---")
-
-    # ── Configuración de hipótesis ───────────────────────────────────────────
     st.subheader("⚙️ Configuración de hipótesis")
 
     col_h1, col_h2, col_h3 = st.columns([1.2, 1.2, 1])
@@ -428,7 +417,6 @@ if "data" in st.session_state:
             step=0.1,
             help="Media poblacional bajo H₀.",
         )
-
     with col_h2:
         tipo_prueba = st.selectbox(
             "Tipo de prueba (H₁)",
@@ -438,7 +426,6 @@ if "data" in st.session_state:
                 "Cola derecha (μ > μ₀)",
             ],
         )
-
     with col_h3:
         alpha = st.select_slider(
             "Nivel de significancia (α)",
@@ -446,11 +433,10 @@ if "data" in st.session_state:
             value=0.05,
         )
 
-    # ── Mostrar hipótesis en LaTeX ───────────────────────────────────────────
     tipo_map = {
-        "Bilateral (μ ≠ μ₀)":       ("μ = μ₀", "μ ≠ μ₀", "bilateral"),
-        "Cola izquierda (μ < μ₀)":  ("μ ≥ μ₀", "μ < μ₀", "left"),
-        "Cola derecha (μ > μ₀)":    ("μ ≤ μ₀", "μ > μ₀", "right"),
+        "Bilateral (μ ≠ μ₀)":      ("μ = μ₀", "μ ≠ μ₀", "bilateral"),
+        "Cola izquierda (μ < μ₀)": ("μ ≥ μ₀", "μ < μ₀", "left"),
+        "Cola derecha (μ > μ₀)":   ("μ ≤ μ₀", "μ > μ₀", "right"),
     }
     h0_tex, h1_tex, cola = tipo_map[tipo_prueba]
 
@@ -460,7 +446,7 @@ if "data" in st.session_state:
 
     st.markdown("---")
 
-    # ── Cálculo del estadístico Z ────────────────────────────────────────────
+    # ── Cálculo ──────────────────────────────────────────────────────────────
     error_est = sigma / np.sqrt(n)
     z_stat    = (x_bar - mu_0) / error_est
 
@@ -472,23 +458,23 @@ if "data" in st.session_state:
         p_value   = stats.norm.cdf(z_stat)
         z_critico = stats.norm.ppf(alpha)
         rechaza   = z_stat < z_critico
-    else:  # right
+    else:
         p_value   = 1 - stats.norm.cdf(z_stat)
         z_critico = stats.norm.ppf(1 - alpha)
         rechaza   = z_stat > z_critico
 
-    # ── Métricas principales ─────────────────────────────────────────────────
+    # ── Métricas ─────────────────────────────────────────────────────────────
     st.subheader("📊 Resultados del contraste")
-
     col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-    col_m1.metric("Media muestral (x̄)",    f"{x_bar:.4f}")
-    col_m2.metric("Error estándar (σ/√n)", f"{error_est:.4f}")
-    col_m3.metric("Estadístico Z",          f"{z_stat:.4f}")
-    col_m4.metric("p-value",                f"{p_value:.4f}")
-    col_m5.metric("Z crítico",
-                  f"±{z_critico:.4f}" if cola == "bilateral" else f"{z_critico:.4f}")
+    col_m1.metric("Media muestral (x̄)",     f"{x_bar:.4f}")
+    col_m2.metric("Error estándar (σ/√n)",  f"{error_est:.4f}")
+    col_m3.metric("Estadístico Z",           f"{z_stat:.4f}")
+    col_m4.metric("p-value",                 f"{p_value:.4f}")
+    col_m5.metric(
+        "Z crítico",
+        f"±{z_critico:.4f}" if cola == "bilateral" else f"{z_critico:.4f}",
+    )
 
-    # Veredicto
     if rechaza:
         st.error(
             f"### 🔴 Se RECHAZA H₀  (α = {alpha})\n"
@@ -502,7 +488,6 @@ if "data" in st.session_state:
             f"Z = {z_stat:.4f} cae en la zona de no rechazo."
         )
 
-    # ── Fórmula con valores sustituidos ─────────────────────────────────────
     with st.expander("🧮 Desarrollo del cálculo", expanded=False):
         st.latex(
             rf"Z = \frac{{\bar{{x}} - \mu_0}}{{\sigma / \sqrt{{n}}}} "
@@ -517,19 +502,19 @@ if "data" in st.session_state:
             rf"{'\\text{{Rechazar}} H_0' if rechaza else '\\text{{No rechazar}} H_0'}"
         )
 
-    # ── Gráfico: curva normal con zonas de rechazo ───────────────────────────
+    # ── Gráfico de zonas de rechazo ──────────────────────────────────────────
     st.subheader("📉 Curva normal estándar · Zonas de rechazo")
 
     x_plot = np.linspace(-4.2, 4.2, 800)
     y_plot = stats.norm.pdf(x_plot)
 
-    ROJO   = "rgba(220, 53, 69, 0.55)"
-    VERDE  = "rgba(40, 167, 69, 0.30)"
-    BORDE  = "#DC3545"
+    ROJO  = "rgba(220, 53, 69, 0.55)"
+    VERDE = "rgba(40, 167, 69, 0.30)"
+    BORDE = "#DC3545"
 
     fig_z = go.Figure()
 
-    # ── Zona(s) de NO rechazo (verde) ────────────────────────────────────────
+    # Zona de no rechazo (verde)
     if cola == "bilateral":
         mask_nr = (x_plot >= -z_critico) & (x_plot <= z_critico)
     elif cola == "left":
@@ -545,7 +530,7 @@ if "data" in st.session_state:
         hoverinfo="skip",
     ))
 
-    # ── Zona(s) de rechazo (rojo) ────────────────────────────────────────────
+    # Zona(s) de rechazo (rojo)
     def add_rejection_area(fig, x_arr, y_arr, mask, name, showlegend=True):
         xs = x_arr[mask]
         ys = y_arr[mask]
@@ -568,28 +553,25 @@ if "data" in st.session_state:
     else:
         add_rejection_area(fig_z, x_plot, y_plot, x_plot >= z_critico, "Rechazo H₀")
 
-    # ── Curva normal completa ─────────────────────────────────────────────────
+    # Curva normal
     fig_z.add_trace(go.Scatter(
         x=x_plot, y=y_plot,
         mode="lines", name="N(0,1)",
         line=dict(color="#4F8EF7", width=2.5),
     ))
 
-    # ── Línea del estadístico Z observado ────────────────────────────────────
-    z_plot_val = max(min(z_stat, 4.1), -4.1)   # clamp para visibilidad
+    # Línea Z observado
+    z_plot_val = max(min(z_stat, 4.1), -4.1)
     fig_z.add_vline(
         x=z_plot_val,
-        line=dict(
-            color="#FFD700", width=2.5, dash="dash",
-        ),
+        line=dict(color="#FFD700", width=2.5, dash="dash"),
         annotation_text=f"Z = {z_stat:.3f}",
         annotation_position="top" if z_stat >= 0 else "top left",
         annotation_font=dict(color="#FFD700", size=13),
     )
 
-    # ── Línea(s) crítica(s) ───────────────────────────────────────────────────
-    criticos = ([-z_critico, z_critico] if cola == "bilateral"
-                else [z_critico])
+    # Valores críticos
+    criticos = [-z_critico, z_critico] if cola == "bilateral" else [z_critico]
     for zc in criticos:
         zc_clamp = max(min(zc, 4.1), -4.1)
         fig_z.add_vline(
@@ -611,7 +593,6 @@ if "data" in st.session_state:
         legend=dict(orientation="h", y=-0.18),
         margin=dict(t=30, b=60, l=40, r=20),
     )
-
     st.plotly_chart(fig_z, use_container_width=True)
 
     # ── Interpretación textual ────────────────────────────────────────────────
@@ -640,26 +621,18 @@ conocida de **σ = {sigma:.4f}** y una muestra de **n = {n}** observaciones.
 """
     st.markdown(interpretacion)
 
-    # ── Guardar en session_state para Fase 4 ────────────────────────────────
+    # Guardar para Fase 4
     st.session_state["prueba_z"] = {
-        "mu_0":       mu_0,
-        "alpha":      alpha,
-        "cola":       cola,
-        "x_bar":      x_bar,
-        "sigma":      sigma,
-        "n":          n,
-        "error_est":  error_est,
-        "z_stat":     z_stat,
-        "z_critico":  z_critico,
-        "p_value":    p_value,
-        "rechaza":    rechaza,
-        "h0_tex":     h0_tex,
-        "h1_tex":     h1_tex,
+        "mu_0": mu_0, "alpha": alpha, "cola": cola,
+        "x_bar": x_bar, "sigma": sigma, "n": n,
+        "error_est": error_est, "z_stat": z_stat,
+        "z_critico": z_critico, "p_value": p_value,
+        "rechaza": rechaza, "h0_tex": h0_tex, "h1_tex": h1_tex,
     }
 
-
-# ── FASE 4: Módulo de IA · Google Gemini ─────────────────────────────────────
-import google.generativeai as genai
+# ════════════════════════════════════════════════════════════
+#  FASE 4 — Módulo de IA · Google Gemini
+# ════════════════════════════════════════════════════════════
 
 if "prueba_z" in st.session_state and "diagnostico" in st.session_state:
 
@@ -669,7 +642,7 @@ if "prueba_z" in st.session_state and "diagnostico" in st.session_state:
     st.markdown("---")
     st.header("🤖 Fase 4 · Interpretación con IA — Google Gemini")
 
-    # ── Configuración de API Key ─────────────────────────────────────────────
+    # ── API Key ──────────────────────────────────────────────────────────────
     with st.expander("🔑 Configuración de API Key", expanded=False):
         st.markdown(
             "Obtén tu clave en [Google AI Studio](https://aistudio.google.com/app/apikey). "
@@ -692,9 +665,13 @@ if "prueba_z" in st.session_state and "diagnostico" in st.session_state:
     with col_mod1:
         modelo_gemini = st.selectbox(
             "Modelo Gemini",
-            ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+            [
+                "gemini-2.5-flash",
+                "gemini-2.0-flash",
+                "gemini-2.5-pro",
+            ],
             index=0,
-            help="Flash: rápido y económico. Pro: mayor razonamiento.",
+            help="2.5 Flash: recomendado. 2.0 Flash: más rápido. 2.5 Pro: máximo razonamiento.",
         )
 
     # ── Construcción del prompt ──────────────────────────────────────────────
@@ -712,35 +689,35 @@ clara y detallada en español.
 ════════════════════════════════════════
  SECCIÓN 1 — ANÁLISIS EXPLORATORIO
 ════════════════════════════════════════
-- Tamaño de muestra (n):           {diag['n']}
-- Media muestral (x̄):             {diag['media']:.4f}
-- Mediana:                         {diag['mediana']:.4f}
-- Desviación estándar muestral (s):{diag['s']:.4f}
-- Coeficiente de asimetría:        {diag['skewness']:.4f}
-- Curtosis (exceso Fisher):        {diag['kurtosis']:.4f}
-- Outliers detectados:             {diag['outliers_n']} ({diag['outliers_pct']:.1f}%)
-- Test de normalidad ({diag['test_normalidad']}):
-    - Estadístico:                 {diag['stat_norm']:.4f}
-    - p-value:                     {diag['p_norm']:.4f}
-- Diagnóstico de sesgo:            {diag['sesgo_label']}
-- Diagnóstico de outliers:         {diag['out_label']}
-- Diagnóstico de normalidad:       {diag['norm_label']}
+• Tamaño de muestra (n):            {diag['n']}
+• Media muestral (x̄):              {diag['media']:.4f}
+• Mediana:                          {diag['mediana']:.4f}
+• Desviación estándar muestral (s): {diag['s']:.4f}
+• Coeficiente de asimetría:         {diag['skewness']:.4f}
+• Curtosis (exceso Fisher):         {diag['kurtosis']:.4f}
+• Outliers detectados:              {diag['outliers_n']} ({diag['outliers_pct']:.1f}%)
+• Test de normalidad ({diag['test_normalidad']}):
+    - Estadístico:                  {diag['stat_norm']:.4f}
+    - p-value:                      {diag['p_norm']:.4f}
+• Diagnóstico de sesgo:             {diag['sesgo_label']}
+• Diagnóstico de outliers:          {diag['out_label']}
+• Diagnóstico de normalidad:        {diag['norm_label']}
 
 ════════════════════════════════════════
  SECCIÓN 2 — PRUEBA DE HIPÓTESIS (Z)
 ════════════════════════════════════════
-- H₀:                              {pz['h0_tex']}
-- H₁:                              {pz['h1_tex']}
-- Tipo de prueba:                   {cola_labels[pz['cola']]}
-- Valor hipotético (μ₀):           {pz['mu_0']:.4f}
-- σ poblacional conocida:          {pz['sigma']:.4f}
-- Media muestral (x̄):             {pz['x_bar']:.4f}
-- Error estándar (σ/√n):           {pz['error_est']:.4f}
-- Estadístico Z calculado:         {pz['z_stat']:.4f}
-- Valor crítico (Zc):              {pz['z_critico']:.4f}
-- p-value:                         {pz['p_value']:.6f}
-- Nivel de significancia (α):      {pz['alpha']}
-- Conclusión:                      {'Se RECHAZA H₀' if pz['rechaza'] else 'No se rechaza H₀'}
+• H₀:                               {pz['h0_tex']}
+• H₁:                               {pz['h1_tex']}
+• Tipo de prueba:                    {cola_labels[pz['cola']]}
+• Valor hipotético (μ₀):            {pz['mu_0']:.4f}
+• σ poblacional conocida:           {pz['sigma']:.4f}
+• Media muestral (x̄):              {pz['x_bar']:.4f}
+• Error estándar (σ/√n):            {pz['error_est']:.4f}
+• Estadístico Z calculado:          {pz['z_stat']:.4f}
+• Valor crítico (Zc):               {pz['z_critico']:.4f}
+• p-value:                          {pz['p_value']:.6f}
+• Nivel de significancia (α):       {pz['alpha']}
+• Conclusión:                       {'Se RECHAZA H₀' if pz['rechaza'] else 'No se rechaza H₀'}
 
 ════════════════════════════════════════
  INSTRUCCIONES DE RESPUESTA
@@ -780,7 +757,6 @@ respuesta, solo interpretación en lenguaje natural.
     # ── Botón de consulta ────────────────────────────────────────────────────
     st.markdown("###")
     col_btn1, col_btn2, col_btn3 = st.columns([1, 1.5, 1])
-
     with col_btn2:
         consultar = st.button(
             "🚀 Consultar a Gemini",
@@ -792,16 +768,14 @@ respuesta, solo interpretación en lenguaje natural.
     if not api_key:
         st.warning("⚠️ Ingresa tu API Key de Gemini para habilitar este módulo.")
 
-    # ── Llamada a la API y respuesta ─────────────────────────────────────────
+    # ── Llamada a la API (nuevo SDK google-genai) ────────────────────────────
     if consultar and api_key:
         try:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel(
-                model_name=modelo_gemini,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.3,          # respuestas consistentes
-                    max_output_tokens=1800,
-                ),
+            client = genai.Client(api_key=api_key)
+
+            config = types.GenerateContentConfig(
+                temperature=0.3,
+                max_output_tokens=1800,
                 system_instruction=(
                     "Eres un estadístico experto y profesor universitario. "
                     "Tus respuestas son rigurosas, estructuradas y didácticas. "
@@ -810,31 +784,36 @@ respuesta, solo interpretación en lenguaje natural.
             )
 
             with st.spinner("⏳ Consultando a Gemini, espera un momento..."):
-                response = model.generate_content(prompt_estadistico)
-                respuesta_texto = response.text
+                response = client.models.generate_content(
+                    model=modelo_gemini,
+                    contents=prompt_estadistico,
+                    config=config,
+                )
+                respuesta_texto = "".join(
+    part.text for part in response.candidates[0].content.parts
+    if hasattr(part, "text")
+)
 
             st.session_state["gemini_respuesta"] = respuesta_texto
             st.session_state["gemini_modelo"]    = modelo_gemini
 
-        except genai.types.BlockedPromptException:
-            st.error("❌ El prompt fue bloqueado por los filtros de seguridad de Gemini.")
         except Exception as e:
             st.error(f"❌ Error al consultar Gemini: {e}")
             st.info(
-                "Verifica que tu API Key sea válida y que el modelo seleccionado "
+                "Verifica que tu API Key sea válida y que el modelo "
                 "esté disponible en tu cuenta de Google AI Studio."
             )
 
     # ── Renderizado de la respuesta ──────────────────────────────────────────
     if "gemini_respuesta" in st.session_state:
         st.markdown("---")
-        st.subheader(f"💬 Interpretación de Gemini · `{st.session_state.get('gemini_modelo', '')}`")
+        st.subheader(
+            f"💬 Interpretación de Gemini · `{st.session_state.get('gemini_modelo', '')}`"
+        )
 
-        # Tarjeta contenedora con fondo sutil
         with st.container(border=True):
             st.markdown(st.session_state["gemini_respuesta"])
 
-        # ── Acciones post-respuesta ──────────────────────────────────────────
         st.markdown("---")
         col_acc1, col_acc2, col_acc3 = st.columns(3)
 
