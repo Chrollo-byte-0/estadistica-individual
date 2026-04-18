@@ -656,3 +656,240 @@ conocida de **σ = {sigma:.4f}** y una muestra de **n = {n}** observaciones.
         "h0_tex":     h0_tex,
         "h1_tex":     h1_tex,
     }
+
+
+# ── FASE 4: Módulo de IA · Google Gemini ─────────────────────────────────────
+import google.generativeai as genai
+
+if "prueba_z" in st.session_state and "diagnostico" in st.session_state:
+
+    pz   = st.session_state["prueba_z"]
+    diag = st.session_state["diagnostico"]
+
+    st.markdown("---")
+    st.header("🤖 Fase 4 · Interpretación con IA — Google Gemini")
+
+    # ── Configuración de API Key ─────────────────────────────────────────────
+    with st.expander("🔑 Configuración de API Key", expanded=False):
+        st.markdown(
+            "Obtén tu clave en [Google AI Studio](https://aistudio.google.com/app/apikey). "
+            "La clave **no se almacena** fuera de esta sesión."
+        )
+        api_key_input = st.text_input(
+            "Google Gemini API Key",
+            type="password",
+            placeholder="AIza...",
+            help="La clave se usa únicamente para esta consulta.",
+        )
+        if api_key_input:
+            st.session_state["gemini_api_key"] = api_key_input
+            st.success("✅ API Key registrada para esta sesión.")
+
+    api_key = st.session_state.get("gemini_api_key", "")
+
+    # ── Selector de modelo ───────────────────────────────────────────────────
+    col_mod1, col_mod2 = st.columns([1, 2])
+    with col_mod1:
+        modelo_gemini = st.selectbox(
+            "Modelo Gemini",
+            ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"],
+            index=0,
+            help="Flash: rápido y económico. Pro: mayor razonamiento.",
+        )
+
+    # ── Construcción del prompt ──────────────────────────────────────────────
+    cola_labels = {
+        "bilateral": "bilateral (H₁: μ ≠ μ₀)",
+        "left":      "cola izquierda (H₁: μ < μ₀)",
+        "right":     "cola derecha (H₁: μ > μ₀)",
+    }
+
+    prompt_estadistico = f"""
+Eres un experto en estadística inferencial. Analiza los siguientes resultados
+de un análisis estadístico completo y proporciona una interpretación profesional,
+clara y detallada en español.
+
+════════════════════════════════════════
+ SECCIÓN 1 — ANÁLISIS EXPLORATORIO
+════════════════════════════════════════
+- Tamaño de muestra (n):           {diag['n']}
+- Media muestral (x̄):             {diag['media']:.4f}
+- Mediana:                         {diag['mediana']:.4f}
+- Desviación estándar muestral (s):{diag['s']:.4f}
+- Coeficiente de asimetría:        {diag['skewness']:.4f}
+- Curtosis (exceso Fisher):        {diag['kurtosis']:.4f}
+- Outliers detectados:             {diag['outliers_n']} ({diag['outliers_pct']:.1f}%)
+- Test de normalidad ({diag['test_normalidad']}):
+    - Estadístico:                 {diag['stat_norm']:.4f}
+    - p-value:                     {diag['p_norm']:.4f}
+- Diagnóstico de sesgo:            {diag['sesgo_label']}
+- Diagnóstico de outliers:         {diag['out_label']}
+- Diagnóstico de normalidad:       {diag['norm_label']}
+
+════════════════════════════════════════
+ SECCIÓN 2 — PRUEBA DE HIPÓTESIS (Z)
+════════════════════════════════════════
+- H₀:                              {pz['h0_tex']}
+- H₁:                              {pz['h1_tex']}
+- Tipo de prueba:                   {cola_labels[pz['cola']]}
+- Valor hipotético (μ₀):           {pz['mu_0']:.4f}
+- σ poblacional conocida:          {pz['sigma']:.4f}
+- Media muestral (x̄):             {pz['x_bar']:.4f}
+- Error estándar (σ/√n):           {pz['error_est']:.4f}
+- Estadístico Z calculado:         {pz['z_stat']:.4f}
+- Valor crítico (Zc):              {pz['z_critico']:.4f}
+- p-value:                         {pz['p_value']:.6f}
+- Nivel de significancia (α):      {pz['alpha']}
+- Conclusión:                      {'Se RECHAZA H₀' if pz['rechaza'] else 'No se rechaza H₀'}
+
+════════════════════════════════════════
+ INSTRUCCIONES DE RESPUESTA
+════════════════════════════════════════
+Por favor, estructura tu respuesta en las siguientes secciones con sus títulos
+en negrita y usando viñetas donde corresponda:
+
+1. **Resumen ejecutivo** (2-3 oraciones con el hallazgo principal)
+
+2. **Interpretación del Análisis Exploratorio**
+   - Comenta la forma de la distribución (sesgo, curtosis)
+   - Evalúa si la presencia/ausencia de outliers es preocupante
+   - Opina sobre la normalidad y su impacto en los supuestos
+
+3. **Interpretación de la Prueba Z**
+   - Explica qué significa el valor Z = {pz['z_stat']:.4f} en contexto
+   - Interpreta el p-value = {pz['p_value']:.6f} en lenguaje no técnico
+   - Indica claramente si se rechaza o no H₀ y qué implica
+
+4. **Validez de los supuestos**
+   - ¿Es razonable asumir σ poblacional conocida?
+   - ¿El tamaño muestral justifica el uso de la Prueba Z?
+   - ¿Algún hallazgo del EDA compromete la validez del contraste?
+
+5. **Conclusión y recomendaciones**
+   - Conclusión final en 2-3 oraciones
+   - 2 o 3 recomendaciones concretas para el analista
+
+Usa un tono académico pero accesible. No incluyas fórmulas matemáticas en la
+respuesta, solo interpretación en lenguaje natural.
+""".strip()
+
+    # ── Vista previa del prompt ──────────────────────────────────────────────
+    with st.expander("🔍 Ver prompt enviado a Gemini", expanded=False):
+        st.code(prompt_estadistico, language="markdown")
+
+    # ── Botón de consulta ────────────────────────────────────────────────────
+    st.markdown("###")
+    col_btn1, col_btn2, col_btn3 = st.columns([1, 1.5, 1])
+
+    with col_btn2:
+        consultar = st.button(
+            "🚀 Consultar a Gemini",
+            use_container_width=True,
+            disabled=not bool(api_key),
+            help="Configura tu API Key primero." if not api_key else "",
+        )
+
+    if not api_key:
+        st.warning("⚠️ Ingresa tu API Key de Gemini para habilitar este módulo.")
+
+    # ── Llamada a la API y respuesta ─────────────────────────────────────────
+    if consultar and api_key:
+        try:
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel(
+                model_name=modelo_gemini,
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.3,          # respuestas consistentes
+                    max_output_tokens=1800,
+                ),
+                system_instruction=(
+                    "Eres un estadístico experto y profesor universitario. "
+                    "Tus respuestas son rigurosas, estructuradas y didácticas. "
+                    "Siempre respondes en español y en formato Markdown."
+                ),
+            )
+
+            with st.spinner("⏳ Consultando a Gemini, espera un momento..."):
+                response = model.generate_content(prompt_estadistico)
+                respuesta_texto = response.text
+
+            st.session_state["gemini_respuesta"] = respuesta_texto
+            st.session_state["gemini_modelo"]    = modelo_gemini
+
+        except genai.types.BlockedPromptException:
+            st.error("❌ El prompt fue bloqueado por los filtros de seguridad de Gemini.")
+        except Exception as e:
+            st.error(f"❌ Error al consultar Gemini: {e}")
+            st.info(
+                "Verifica que tu API Key sea válida y que el modelo seleccionado "
+                "esté disponible en tu cuenta de Google AI Studio."
+            )
+
+    # ── Renderizado de la respuesta ──────────────────────────────────────────
+    if "gemini_respuesta" in st.session_state:
+        st.markdown("---")
+        st.subheader(f"💬 Interpretación de Gemini · `{st.session_state.get('gemini_modelo', '')}`")
+
+        # Tarjeta contenedora con fondo sutil
+        with st.container(border=True):
+            st.markdown(st.session_state["gemini_respuesta"])
+
+        # ── Acciones post-respuesta ──────────────────────────────────────────
+        st.markdown("---")
+        col_acc1, col_acc2, col_acc3 = st.columns(3)
+
+        with col_acc1:
+            st.download_button(
+                label="⬇️ Descargar interpretación (.txt)",
+                data=st.session_state["gemini_respuesta"],
+                file_name="interpretacion_gemini.txt",
+                mime="text/plain",
+                use_container_width=True,
+            )
+
+        with col_acc2:
+            reporte_completo = f"""
+REPORTE DE ANÁLISIS ESTADÍSTICO — PRUEBA Z
+==========================================
+Generado con soporte de IA (Google Gemini · {st.session_state.get('gemini_modelo','')})
+
+── DATOS DEL CONTRASTE ──────────────────
+H₀: {pz['h0_tex']}
+H₁: {pz['h1_tex']}
+μ₀ = {pz['mu_0']:.4f} | α = {pz['alpha']} | n = {pz['n']}
+x̄  = {pz['x_bar']:.4f} | σ = {pz['sigma']:.4f}
+Z  = {pz['z_stat']:.4f} | Zc = {pz['z_critico']:.4f}
+p-value = {pz['p_value']:.6f}
+Conclusión: {'Se RECHAZA H₀' if pz['rechaza'] else 'No se rechaza H₀'}
+
+── DIAGNÓSTICO EDA ───────────────────────
+Sesgo:       {diag['sesgo_label']}
+Outliers:    {diag['out_label']}
+Normalidad:  {diag['norm_label']}
+
+── INTERPRETACIÓN IA ─────────────────────
+{st.session_state['gemini_respuesta']}
+""".strip()
+
+            st.download_button(
+                label="📄 Descargar reporte completo (.txt)",
+                data=reporte_completo,
+                file_name="reporte_estadistico_completo.txt",
+                mime="text/plain",
+                use_container_width=True,
+            )
+
+        with col_acc3:
+            if st.button("🔄 Nueva consulta", use_container_width=True):
+                del st.session_state["gemini_respuesta"]
+                st.rerun()
+
+# ── Footer ────────────────────────────────────────────────────────────────────
+st.markdown("---")
+st.markdown(
+    "<div style='text-align:center; color:gray; font-size:0.85em;'>"
+    "Análisis Estadístico · Prueba Z &nbsp;|&nbsp; "
+    "Powered by Streamlit, SciPy & Google Gemini"
+    "</div>",
+    unsafe_allow_html=True,
+)
